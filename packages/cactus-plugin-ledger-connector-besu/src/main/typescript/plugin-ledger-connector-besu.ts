@@ -192,9 +192,20 @@ export class PluginLedgerConnectorBesu
     );
 
     if (typeof viemWebSocketTransportConfig === "object") {
-      this.viemWebSocketTransportConfig = viemWebSocketTransportConfig;
+      this.viemWebSocketTransportConfig = {
+          ...viemWebSocketTransportConfig,
+          retryCount: Infinity,
+          retryDelay: 1000,
+          timeout: 2147483647,
+          keepAlive: true,
+        };
     } else {
-      this.viemWebSocketTransportConfig = {};
+      this.viemWebSocketTransportConfig = {
+        retryCount: Infinity,
+        retryDelay: 1000,
+        timeout: 2147483647,
+        keepAlive: true,
+      };
     }
 
     const besuChain = defineChain({
@@ -264,6 +275,33 @@ export class PluginLedgerConnectorBesu
     this.log.info("onPluginInit() querying networkId...");
     const networkId = await this.web3.eth.net.getId();
     this.log.info("onPluginInit() obtained networkId: %d", networkId);
+
+    setInterval(() => {
+      try {
+        this.web3.eth.getBlockNumber()
+          .then(() => this.log.debug("WebSocket heartbeat sent"))
+          .catch((err) => this.log.error("WebSocket heartbeat failed:", err));
+      } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      this.log.error("Error in WebSocket heartbeat:", errorMessage);
+    }
+    }, 30000);
+
+    (this.web3Provider as any).on('error', (err: Error) => {
+  this.log.error('WebSocket error:', err);
+});
+      
+      this.web3Provider.on('end', () => {
+        this.log.warn('WebSocket connection ended');
+      });
+      
+      this.web3Provider.on('connect', () => {
+        this.log.info('WebSocket connected');
+      });
+      
+      (this.web3Provider as any).on('reconnect', (attempt: number) => {
+  this.log.info('WebSocket reconnecting... Attempt:', attempt);
+});
   }
 
   public async shutdown(): Promise<void> {
