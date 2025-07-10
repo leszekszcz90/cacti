@@ -50,6 +50,9 @@ export declare class PluginLedgerConnectorBesu implements IPluginLedgerConnector
     getInstanceId(): string;
     getTxSubjectObservable(): Observable<IRunTransactionV1Exchange>;
     onPluginInit(): Promise<void>;
+    private setupWebSocketConnection;
+    private attemptReconnection;
+    private sendHeartbeat;
     shutdown(): Promise<void>;
     registerWebServices(app: Express, wsApi: SocketIoServer): Promise<IWebServiceEndpoint[]>;
     createGrpcSvcDefAndImplPairs(): Promise<IGrpcSvcDefAndImplPair[]>;

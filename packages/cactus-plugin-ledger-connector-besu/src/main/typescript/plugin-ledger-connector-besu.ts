@@ -276,33 +276,82 @@ export class PluginLedgerConnectorBesu
     const networkId = await this.web3.eth.net.getId();
     this.log.info("onPluginInit() obtained networkId: %d", networkId);
 
-    setInterval(() => {
-      try {
-        this.web3.eth.getBlockNumber()
-          .then(() => this.log.debug("WebSocket heartbeat sent"))
-          .catch((err) => this.log.error("WebSocket heartbeat failed:", err));
-      } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      this.log.error("Error in WebSocket heartbeat:", errorMessage);
-    }
-    }, 30000);
-
-    (this.web3Provider as any).on('error', (err: Error) => {
-  this.log.error('WebSocket error:', err);
-});
-      
-      this.web3Provider.on('end', () => {
-        this.log.warn('WebSocket connection ended');
-      });
-      
-      this.web3Provider.on('connect', () => {
-        this.log.info('WebSocket connected');
-      });
-      
-      (this.web3Provider as any).on('reconnect', (attempt: number) => {
-  this.log.info('WebSocket reconnecting... Attempt:', attempt);
-});
+    // Set up WebSocket connection monitoring and automated reconnection
+  this.setupWebSocketConnection();
   }
+
+    private setupWebSocketConnection(): void {
+  // Add event handlers for WebSocket connection
+  (this.web3Provider as any).on('error', (err: Error) => {
+    this.log.error('WebSocket error:', err);
+  });
+  
+  this.web3Provider.on('end', () => {
+    this.log.warn('WebSocket connection ended');
+    // Try to reconnect immediately when the connection ends
+    this.attemptReconnection();
+  });
+  
+  this.web3Provider.on('connect', () => {
+    this.log.info('WebSocket connected');
+  });
+  
+  (this.web3Provider as any).on('reconnect', (attempt: number) => {
+    this.log.info('WebSocket reconnecting... Attempt:', attempt);
+  });
+
+  // Set up a more frequent heartbeat (every 30 seconds)
+  // This helps keep the connection alive by showing activity
+  const heartbeatInterval = 30000; // 30 seconds
+  setInterval(() => this.sendHeartbeat(), heartbeatInterval);
+}
+
+private attemptReconnection(): void {
+  this.log.info("Attempting to reconnect WebSocket...");
+  
+  try {
+    // Check if connection exists and its state
+    if ((this.web3Provider as any).connection) {
+      const connection = (this.web3Provider as any).connection;
+      
+      // WebSocket states: 0 = CONNECTING, 1 = OPEN, 2 = CLOSING, 3 = CLOSED
+      if (connection.readyState === 3 || connection.readyState === 2) {
+        this.log.info("WebSocket is closed or closing, reconnecting...");
+        (this.web3Provider as any).reconnect();
+      }
+    } else {
+      // If connection doesn't exist, try to reconnect
+      this.log.info("WebSocket connection object doesn't exist, reconnecting...");
+      (this.web3Provider as any).reconnect();
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    this.log.error("Failed to reconnect WebSocket:", errorMessage);
+  }
+}
+
+private async sendHeartbeat(): Promise<void> {
+  try {
+    // Check if the connection is open before sending the heartbeat
+    const connection = (this.web3Provider as any).connection;
+    if (connection && connection.readyState === 1) { // 1 = OPEN
+      // Use a lightweight call to keep the connection active
+      await this.web3.eth.getBlockNumber()
+        .then(() => this.log.debug("WebSocket heartbeat sent"))
+        .catch((err) => {
+          this.log.error("WebSocket heartbeat failed:", err);
+          this.attemptReconnection();
+        });
+    } else {
+      this.log.warn("WebSocket connection not open, attempting to reconnect...");
+      this.attemptReconnection();
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    this.log.error("Error in WebSocket heartbeat:", errorMessage);
+    this.attemptReconnection();
+  }
+}
 
   public async shutdown(): Promise<void> {
     this.log.info(`Shutting down...`);
