@@ -31,7 +31,7 @@ export declare class PluginLedgerConnectorBesu implements IPluginLedgerConnector
     prometheusExporter: PrometheusExporter;
     private readonly log;
     private readonly logLevel;
-    private readonly web3Provider;
+    private web3Provider;
     private readonly web3;
     private readonly viemClient;
     private readonly viemTransport;
@@ -51,7 +51,20 @@ export declare class PluginLedgerConnectorBesu implements IPluginLedgerConnector
     getTxSubjectObservable(): Observable<IRunTransactionV1Exchange>;
     onPluginInit(): Promise<void>;
     private setupWebSocketConnection;
+    private reconnectionAttempts;
+    private readonly maxReconnectionAttempts;
+    private readonly initialBackoffMs;
+    private readonly maxBackoffMs;
+    /**
+     * Attempts to reconnect the WebSocket connection using an exponential backoff strategy.
+     * Delay starts at 2 seconds and doubles with each attempt (2s, 4s, 8s, 16s...) up to 2 minutes maximum.
+     */
     private attemptReconnection;
+    /**
+     * Completely recreates the WebSocket provider from scratch.
+     * This is used as a fallback when reconnection attempts fail.
+     */
+    private recreateWebSocketProvider;
     private sendHeartbeat;
     shutdown(): Promise<void>;
     registerWebServices(app: Express, wsApi: SocketIoServer): Promise<IWebServiceEndpoint[]>;

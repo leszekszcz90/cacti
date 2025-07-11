@@ -151,7 +151,7 @@ export class PluginLedgerConnectorBesu
   public prometheusExporter: PrometheusExporter;
   private readonly log: Logger;
   private readonly logLevel: LogLevelDesc;
-  private readonly web3Provider: WebsocketProvider;
+  private web3Provider: WebsocketProvider;
   private readonly web3: Web3;
   private readonly viemClient: ViemPublicClient;
   private readonly viemTransport: ViemWebSocketTransport;
@@ -306,27 +306,131 @@ export class PluginLedgerConnectorBesu
   setInterval(() => this.sendHeartbeat(), heartbeatInterval);
 }
 
+private reconnectionAttempts = 0;
+private readonly maxReconnectionAttempts = 15; // Maximum number of reconnection attempts
+private readonly initialBackoffMs = 2000; // Initial backoff delay in milliseconds (2 seconds)
+private readonly maxBackoffMs = 120000; // Maximum backoff delay (2 minutes)
+
+/**
+ * Attempts to reconnect the WebSocket connection using an exponential backoff strategy.
+ * Delay starts at 2 seconds and doubles with each attempt (2s, 4s, 8s, 16s...) up to 2 minutes maximum.
+ */
 private attemptReconnection(): void {
-  this.log.info("Attempting to reconnect WebSocket...");
+  this.log.info(`Attempting to reconnect WebSocket... (Attempt ${this.reconnectionAttempts + 1}/${this.maxReconnectionAttempts})`);
+  
+  // Check if we've reached maximum reconnection attempts
+  if (this.reconnectionAttempts >= this.maxReconnectionAttempts) {
+    this.log.error(`Failed to reconnect after ${this.maxReconnectionAttempts} attempts. Will try recreating the provider.`);
+    this.recreateWebSocketProvider();
+    this.reconnectionAttempts = 0;
+    return;
+  }
   
   try {
-    // Check if connection exists and its state
+    // Check if connection exists and determine its state
     if ((this.web3Provider as any).connection) {
       const connection = (this.web3Provider as any).connection;
       
       // WebSocket states: 0 = CONNECTING, 1 = OPEN, 2 = CLOSING, 3 = CLOSED
       if (connection.readyState === 3 || connection.readyState === 2) {
         this.log.info("WebSocket is closed or closing, reconnecting...");
-        (this.web3Provider as any).reconnect();
+        
+        // Calculate exponential backoff delay based on the number of attempts
+        // Starting at 2 seconds and doubling until reaching 2 minutes max
+        const backoffTime = Math.min(
+          this.initialBackoffMs * Math.pow(2, this.reconnectionAttempts),
+          this.maxBackoffMs
+        );
+        
+        this.log.info(`Using backoff delay of ${backoffTime/1000} seconds before reconnection`);
+        
+        // Increment attempts counter before attempting reconnection
+        this.reconnectionAttempts++;
+        
+        // Delayed reconnection with exponential backoff
+        setTimeout(() => {
+          try {
+            (this.web3Provider as any).reconnect();
+          } catch (innerError) {
+            const errorMessage = innerError instanceof Error ? innerError.message : String(innerError);
+            this.log.error(`Failed delayed reconnection attempt: ${errorMessage}`);
+            // Continue with next backoff attempt
+            this.attemptReconnection();
+          }
+        }, backoffTime);
       }
     } else {
-      // If connection doesn't exist, try to reconnect
-      this.log.info("WebSocket connection object doesn't exist, reconnecting...");
-      (this.web3Provider as any).reconnect();
+      // If connection object doesn't exist, recreate the provider
+      this.log.info("WebSocket connection object doesn't exist, recreating provider...");
+      this.recreateWebSocketProvider();
+      this.reconnectionAttempts = 0;
     }
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    this.log.error("Failed to reconnect WebSocket:", errorMessage);
+    this.log.error(`Failed to reconnect WebSocket: ${errorMessage}`);
+    this.reconnectionAttempts++;
+    
+    // Schedule next attempt with backoff
+    const backoffTime = Math.min(
+      this.initialBackoffMs * Math.pow(2, this.reconnectionAttempts),
+      this.maxBackoffMs
+    );
+    
+    this.log.info(`Will retry in ${backoffTime/1000} seconds...`);
+    setTimeout(() => this.attemptReconnection(), backoffTime);
+  }
+}
+
+/**
+ * Completely recreates the WebSocket provider from scratch.
+ * This is used as a fallback when reconnection attempts fail.
+ */
+private recreateWebSocketProvider(): void {
+  this.log.info("Recreating WebSocket provider from scratch...");
+  
+  try {
+    // Try to close existing provider if possible
+    try {
+      if ((this.web3Provider as any).connection) {
+        (this.web3Provider as any).disconnect();
+      }
+    } catch (err) {
+      this.log.debug("Error while disconnecting old provider:", err);
+    }
+    
+    // Create new provider with the same host
+    const newProvider = new Web3.providers.WebsocketProvider(
+      this.options.rpcApiWsHost
+    );
+    
+    // Set up event handlers for the new provider
+    (newProvider as any).on('error', (err: Error) => {
+      this.log.error('WebSocket error:', err);
+    });
+    
+    newProvider.on('end', () => {
+      this.log.warn('WebSocket connection ended');
+      this.attemptReconnection();
+    });
+    
+    newProvider.on('connect', () => {
+      this.log.info('WebSocket connected');
+      // Reset reconnection counter on successful connection
+      this.reconnectionAttempts = 0;
+    });
+    
+    (newProvider as any).on('reconnect', (attempt: number) => {
+      this.log.info('WebSocket reconnecting... Attempt:', attempt);
+    });
+    
+    // Replace the provider in web3 instance
+    this.web3.setProvider(newProvider);
+    this.web3Provider = newProvider;
+    
+    this.log.info("New WebSocket provider created and attached");
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    this.log.error(`Failed to recreate WebSocket provider: ${errorMessage}`);
   }
 }
 
