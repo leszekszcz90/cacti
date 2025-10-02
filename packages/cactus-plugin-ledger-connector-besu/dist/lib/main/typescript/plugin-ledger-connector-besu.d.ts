@@ -50,16 +50,27 @@ export declare class PluginLedgerConnectorBesu implements IPluginLedgerConnector
     getInstanceId(): string;
     getTxSubjectObservable(): Observable<IRunTransactionV1Exchange>;
     onPluginInit(): Promise<void>;
-    private setupWebSocketConnection;
     private reconnectionAttempts;
+    private reconnectionInProgress;
+    private reconnectionTimeoutId;
+    private heartbeatIntervalId;
     private readonly maxReconnectionAttempts;
     private readonly initialBackoffMs;
     private readonly maxBackoffMs;
+    private setupWebSocketConnection;
     /**
      * Attempts to reconnect the WebSocket connection using an exponential backoff strategy.
      * Delay starts at 2 seconds and doubles with each attempt (2s, 4s, 8s, 16s...) up to 2 minutes maximum.
      */
     private attemptReconnection;
+    /**
+     * Executes the actual reconnect call on the WebSocket provider.
+     */
+    private scheduleReconnectAttempt;
+    /**
+     * Checks if reconnection was successful
+     */
+    private checkReconnectionStatus;
     /**
      * Completely recreates the WebSocket provider from scratch.
      * This is used as a fallback when reconnection attempts fail.

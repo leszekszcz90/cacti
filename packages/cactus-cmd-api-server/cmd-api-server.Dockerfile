@@ -1,7 +1,4 @@
-FROM node:22.4.0-bookworm-slim
-
-# CVE-2023-31484 - perl: CPAN.pm does not verify TLS certificates when downloading distributions over HTTPS...
-RUN apt-get remove -y --allow-remove-essential perl perl-base && apt-get autoremove -y
+FROM node:22.20.0-bookworm-slim
 
 ARG APP_DIR=/opt/cacti/cmd-api-server
 WORKDIR ${APP_DIR}

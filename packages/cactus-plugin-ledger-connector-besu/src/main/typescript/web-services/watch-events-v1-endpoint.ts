@@ -12,6 +12,7 @@ import {
   Checks,
   bigIntToDecimalStringReplacer,
 } from "@hyperledger/cactus-common";
+
 import { LogLevelDesc, LoggerProvider } from "@hyperledger/cactus-common";
 import {
   ViemV2242WatchEventsV1Progress,

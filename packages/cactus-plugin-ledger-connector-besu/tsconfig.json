@@ -6,7 +6,13 @@
     "declarationDir": "dist/lib",
     "resolveJsonModule": true,
     "rootDir": "./src",
-    "tsBuildInfoFile": "../../.build-cache/cactus-plugin-ledger-connector-besu.tsbuildinfo"
+    "tsBuildInfoFile": "../../.build-cache/cactus-plugin-ledger-connector-besu.tsbuildinfo",
+    "baseUrl": ".", 
+    "paths": {
+      "@hyperledger/cactus-common/serde/json/big-int": [
+        "../cactus-common/dist/lib/main/typescript/serde/json/big-int"
+      ]
+    }
   },
   "include": [
     "./src",
