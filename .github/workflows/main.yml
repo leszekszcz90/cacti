@@ -1,0 +1,29 @@
+name: Build plugin tarball
+
+on:
+  push:
+    tags:
+      - "plugin-*"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Build and pack plugin
+        run: |
+          cd packages/cactus-plugin-ledger-connector-besu
+          npm install
+          npm pack
+          mv *.tgz ../../plugin.tgz
+
+      - name: Upload release asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: plugin.tgz
